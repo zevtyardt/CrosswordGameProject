@@ -1,10 +1,9 @@
-from typing import List
+from typing import List, Union
 import itertools
 import curses
 import _curses
 import threading
 import time
-import re
 import textwrap
 
 
@@ -19,12 +18,13 @@ class Wraptext:
         self._result = []
 
     def update(self, text: str, width: int = None, maxline: int = None):
-        self.text = text
-        if width:
+        if self.text != text:
+            self.text = text
+        if width != self.width:
             self.width = width
+            self.maxindex = float("inf")
         if maxline:
             self.maxline = maxline
-        self.maxindex = float("inf")
 
     def _calc(self, back=False):
         if back and self.index > 0:
@@ -54,17 +54,21 @@ class Wraptext:
 
     @property
     def back(self):
-        if self.prevdirect == "next":
+        if self.prevdirect == "next" and self.index != self.maxindex:
             self.index -= 1
         self.prevdirect = "back"
         return self._calc(back=True)
 
 
 class _Utils:
-    def calc_center(self, text: str, win: _curses.window) -> tuple:
-        ltxt = len(text)
+    def calc_center(self, texts: Union[str, list], win: _curses.window) -> tuple:
+        if isinstance(texts, str):
+            texts = [texts]
+        longestText = max(texts)
+        ltexts = len(texts)
+        ltxt = len(longestText)
         height, width = map(lambda x: (x // 2), win.getmaxyx())
-        return height, width - (ltxt // 2), text
+        return height - (ltexts // 2), width - (ltxt // 2), longestText if ltexts == 1 else texts
 
     def add_title(self, text: str, win: _curses.window, align: str = "center") -> None:
         if align == "alignleft":
@@ -131,6 +135,37 @@ class CrosswordTui(_Utils):
         th.start()
     """
 
+    def drawCrossword(self, win: _curses.window):
+        ch, cw, listCrossword = self.calc_center([
+"                    ┌1──┐                            ",                     
+"                    │ I │                            ",                     
+"            ┌4──┬───┼───┼───┬───┬───┐                ",                     
+"            │ C │ O │ N │ T │ O │ H │                ",                     
+"            └───┴───┼───┼───┴───┴───┘                ",                     
+"                    │ D │                            ",                     
+"                ┌8──┼───┼───┬───┬───┐                ",                     
+"                │ D │ U │ M │ M │ Y │                ",                     
+"    ┌7──┐       └───┼───┼───┴───┴───┘                ",                     
+"    │ L │           │ S │                            ",                     
+"    ├───┤   ┌5──┐   ├───┤                            ",                     
+"    │ O │   │ I │   │ T │                            ",                     
+"    ├───┤   ├2──┼───┼───┼───┬───┬───┬3──┬───┬───┬───┐",                     
+"    │ R │   │ P │ E │ R │ C │ E │ T │ A │ K │ A │ N │",                     
+"┌10─┼───┼───┼───┼───┼───┼───┴───┴───┼───┼───┴───┴───┘",                     
+"│ T │ E │ K │ S │   │ I │           │ D │            ",                     
+"└───┼───┼───┼───┤   └───┘       ┌6──┼───┼───┬───┬───┐",                     
+"    │ M │   │ U │               │ D │ A │ L │ A │ M │",                     
+"    └───┘   ├───┤               └───┼───┼───┴───┴───┘",                     
+"            │ M │                   │ L │            ",                     
+"            └───┘           ┌9──┬───┼───┼───┐        ",                     
+"                            │ A │ T │ A │ U │        ",                     
+"                            └───┴───┼───┼───┘        ",                     
+"                                    │ H │            ",                     
+"                                    └───┘            ",  
+        ], win)
+        for index, line in enumerate(listCrossword, start=ch):
+            win.addstr(index, cw, line)
+
     def displayHelpMenu(self, win: _curses.window):
         win.erase()
         win.border()
@@ -144,7 +179,6 @@ class CrosswordTui(_Utils):
         self.scr.timeout(500)
         curses.curs_set(0)
         self.define_colors()
-        self.question = "Lorem Ipsum adalah contoh teks atau dummy dalam industri percetakan dan penataan huruf atau typesetting. Lorem Ipsum telah menjadi standar contoh teks sejak tahun 1500an, saat seorang tukang cetak yang tidak dikenal mengambil sebuah kumpulan teks dan mengacaknya untuk menjadi sebuah buku contoh huruf. Ia tidak hanya bertahan selama 5 abad, tapi juga telah beralih ke penataan huruf elektronik, tanpa ada perubahan apapun. Ia mulai dipopulerkan pada tahun 1960 dengan diluncurkannya lembaran-lembaran Letraset yang menggunakan kalimat-kalimat dari Lorem Ipsum, dan seiring munculnya perangkat lunak Desktop Publishing seperti Aldus PageMaker juga memiliki versi Lorem Ipsum."
 
         wraptext = Wraptext()
         wraptext.update(self.question, self.scr.getmaxyx()[1] - 19, 3)
@@ -161,14 +195,15 @@ class CrosswordTui(_Utils):
 
             questScreen = self.new_window(5, width - 15, 0, 0)
             self.add_title("question", questScreen, "alignleft")
-            wraptext.update(self.question)
-            wraptext.width = questScreen.getmaxyx()[1] - 4
+            questWidth = questScreen.getmaxyx()[1] - 4
+            wraptext.update(self.question, width=questWidth)
             for index, line in enumerate(wraptext, start=1):
                 questScreen.addstr(index, 2, line)
 
             mainScreen = self.new_window(height - 5, width, 5, 0)
             self.add_title("crossword v1", mainScreen)
-            mainScreen.addstr(*self.calc_center(f"{ch}, {mainScreen.getmaxyx()}, {wraptext.index = }", mainScreen))
+            self.drawCrossword(mainScreen)
+            # mainScreen.addstr(*self.calc_center(f"{ch}, {mainScreen.getmaxyx()}, {wraptext.index = }, {wraptext.maxindex = }", mainScreen))
 
             self.refresh(scoreScreen, questScreen, mainScreen)
 
