@@ -168,7 +168,7 @@ class GridMaker(object):
         from cmd2 import ansi
         arrays = arrays or self.board
         print(ansi.style(
-            "\n".join("".join(i) for i in arrays),
+            "\n".join("".join(['"', *i, '",']) for i in arrays),
             bold=True
         ))
 
@@ -612,28 +612,4 @@ if __name__ == "__main__":
     g = GridMaker(c.array, c.registered)
     g.generate()
     g.serialize()
-    for x, y  in g.new_position.items():
-       for a, b in y.items():
-           print (a)
-           for loc in b["loc"]:
-               row, col = loc
-               # atas kiri:
-               print (g.board[row - 1][col - 1])
-               # atas:
-               print (g.board[row - 1][col])
-               # atas kanan:
-               print (g.board[row - 1][col + 1])
-               # kiri:
-               print (g.board[row][col - 1])
-               # kanan:
-               print (g.board[row][col + 1])
-               # bawah kiri:
-               print (g.board[row + 1][col - 1])
-               # bawah:
-               print (g.board[row + 1][col])
-               # bawah kanan:
-               print (g.board[row + 1][col + 1])
-
-               print ()
-
-           exit()
+    # pprint(g.new_position)
