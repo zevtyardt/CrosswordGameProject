@@ -1,3 +1,4 @@
+from crosswordEngine import crosswordEngine
 from typing import List, Union
 import itertools
 import curses
@@ -75,9 +76,9 @@ class _Utils:
             cw = 2
         elif align == "center":
             ch, cw, text = self.calc_center(text, win)
-        elif align == "alignrigth":
-            cw = win.getmaxyx()[1] - 4 - (len(text))
-        win.addstr(0, cw, f" {text.upper()} ")
+        elif align == "alignright":
+            cw = win.getmaxyx()[1] - 2 - len(text)
+        win.addstr(0, cw, f" {text.upper()} ", curses.A_BOLD)
 
     def refresh(self, *windows) -> None:
         self.scr.refresh()
@@ -88,7 +89,7 @@ class _Utils:
         if len(text) < maxwidth:
             while text:
                 yield text
-                time.sleep(0.2)
+                time.sleep(0.5)
         else:
             text += delimeter
             ltext = len(text)
@@ -98,13 +99,21 @@ class _Utils:
                 if len(line) != maxwidth:
                     line += text[:index]
                 yield line[:maxwidth]
-                time.sleep(0.2)
+                time.sleep(0.5)
+
+    def startThread(self, name: str, func):
+        if not self.activeThread.get(name):
+            self.activeThread[name] = True
+            th = threading.Thread(target=func)
+            th.daemon = True
+            th.start()
 
 
 class CrosswordTui(_Utils):
     def __init__(self):
         self.question = "Lorem Ipsum adalah contoh teks atau dummy dalam industri percetakan dan penataan huruf atau typesetting. Lorem Ipsum telah menjadi standar contoh teks sejak tahun 1500an, saat seorang tukang cetak yang tidak dikenal mengambil sebuah kumpulan teks dan mengacaknya untuk menjadi sebuah buku contoh huruf. Ia tidak hanya bertahan selama 5 abad, tapi juga telah beralih ke penataan huruf elektronik, tanpa ada perubahan apapun. Ia mulai dipopulerkan pada tahun 1960 dengan diluncurkannya lembaran-lembaran Letraset yang menggunakan kalimat-kalimat dari Lorem Ipsum, dan seiring munculnya perangkat lunak Desktop Publishing seperti Aldus PageMaker juga memiliki versi Lorem Ipsum."
         self.score = float("inf")
+        self.dataCrossword = None
         self.activeThread = {}
 
     def startWrapper(self):
@@ -119,59 +128,36 @@ class CrosswordTui(_Utils):
         _win.border(0)
         return _win
 
-    """
-    def startHelpDaemon(self, win: _curses.window) -> None:
-        maxwidth = win.getmaxyx()[1] - 4
-        helpText = "key_up: scroll keatas • key_down: scroll kebawah • q: keluar"
-        def worker():
-            for line in self.runtext(helpText, maxwidth):
-                if self.activeThread["helpScreen"] is False:
-                    break
-                win.addstr(2, 2, line)
-                win.refresh()
-        self.activeThread["helpScreen"] = True
-        th = threading.Thread(target=worker)
-        th.daemon = True
-        th.start()
-    """
+    def generateCrosswordBoard(self, mh: int, mw: int):
+        def targetFunc():
+            engine = crosswordEngine("ab abc abcd abcde abcdef abcdefg abcdefgh abcdefghi abcdefghij abcdefghijk".split(),
+                maxheight=mh, maxwidth=mw)
+            engine.compute()
+            g = engine.generateBoard()
+            self.dataCrossword = {"board": g.serialize(), "height": mh, "width": mw}
+        self.startThread("gcb", targetFunc)
 
     def drawCrossword(self, win: _curses.window):
-        ch, cw, listCrossword = self.calc_center([
-"                    ┌1──┐                            ",                     
-"                    │ I │                            ",                     
-"            ┌4──┬───┼───┼───┬───┬───┐                ",                     
-"            │ C │ O │ N │ T │ O │ H │                ",                     
-"            └───┴───┼───┼───┴───┴───┘                ",                     
-"                    │ D │                            ",                     
-"                ┌8──┼───┼───┬───┬───┐                ",                     
-"                │ D │ U │ M │ M │ Y │                ",                     
-"    ┌7──┐       └───┼───┼───┴───┴───┘                ",                     
-"    │ L │           │ S │                            ",                     
-"    ├───┤   ┌5──┐   ├───┤                            ",                     
-"    │ O │   │ I │   │ T │                            ",                     
-"    ├───┤   ├2──┼───┼───┼───┬───┬───┬3──┬───┬───┬───┐",                     
-"    │ R │   │ P │ E │ R │ C │ E │ T │ A │ K │ A │ N │",                     
-"┌10─┼───┼───┼───┼───┼───┼───┴───┴───┼───┼───┴───┴───┘",                     
-"│ T │ E │ K │ S │   │ I │           │ D │            ",                     
-"└───┼───┼───┼───┤   └───┘       ┌6──┼───┼───┬───┬───┐",                     
-"    │ M │   │ U │               │ D │ A │ L │ A │ M │",                     
-"    └───┘   ├───┤               └───┼───┼───┴───┴───┘",                     
-"            │ M │                   │ L │            ",                     
-"            └───┘           ┌9──┬───┼───┼───┐        ",                     
-"                            │ A │ T │ A │ U │        ",                     
-"                            └───┴───┼───┼───┘        ",                     
-"                                    │ H │            ",                     
-"                                    └───┘            ",  
-        ], win)
-        for index, line in enumerate(listCrossword, start=ch):
-            win.addstr(index, cw, line)
+        mh, mw = win.getmaxyx()
+        if not self.dataCrossword and not self.activeThread.get("gcb"):
+            self.generateCrosswordBoard(mh, mw)
+        if self.dataCrossword:
+            if mh > self.dataCrossword["height"] or mw > self.dataCrossword["width"]:
+                self.dataCrossword = None
+                return
+            ch, cw, board = self.calc_center(self.dataCrossword["board"], win)
+            for index, line in enumerate(board, start=ch):
+                win.addstr(index, cw, line, curses.A_BOLD)
 
     def displayHelpMenu(self, win: _curses.window):
-        win.erase()
-        win.border()
-        self.add_title("help menu", win)
-        win.addstr(2, 3, "cok", curses.color_pair(20))
-        win.getch()
+        win.timeout(500)
+        while 1:
+            win.erase()
+            win.border()
+            self.add_title("help menu", win)
+            self.drawCrossword(win)
+            if win.getch() == ord("g"):
+                break
 
     def app(self, scr):
         self.scr = scr
@@ -188,11 +174,6 @@ class CrosswordTui(_Utils):
         while ch != ord("q"):
             height, width = self.scr.getmaxyx()
 
-            scoreScreen = self.new_window(5, 15, 0, width - 15)
-            self.add_title("score", scoreScreen, "alignleft")
-            scoreScreen.addstr(
-                *self.calc_center(f"{self.score}", scoreScreen), curses.color_pair(2))
-
             questScreen = self.new_window(5, width - 15, 0, 0)
             self.add_title("question", questScreen, "alignleft")
             questWidth = questScreen.getmaxyx()[1] - 4
@@ -201,21 +182,27 @@ class CrosswordTui(_Utils):
                 questScreen.addstr(index, 2, line)
 
             mainScreen = self.new_window(height - 5, width, 5, 0)
-            self.add_title("crossword v1", mainScreen)
-            self.drawCrossword(mainScreen)
-            # mainScreen.addstr(*self.calc_center(f"{ch}, {mainScreen.getmaxyx()}, {wraptext.index = }, {wraptext.maxindex = }", mainScreen))
+            self.add_title("teka teki silang v1", mainScreen)
+            mainScreen.addstr(*self.calc_center(time.strftime("%c"), mainScreen))
+
+            #  additional
+            scoreScreen = self.new_window(5, 15, 0, width - 15)
+            self.add_title("score", scoreScreen, "alignleft")
+            scoreScreen.addstr(*self.calc_center(
+                f"{self.score}", scoreScreen), curses.color_pair(2))
 
             self.refresh(scoreScreen, questScreen, mainScreen)
 
             ch = self.scr.getch()
-            if ch == ord("H"):
+            if ch == ord("g"):
                 self.displayHelpMenu(mainScreen)
             elif ch == curses.KEY_PPAGE:
                 wraptext.back
             elif ch == curses.KEY_NPAGE:
                 wraptext.next
-        self.activeThread["helpScreen"] = False
 
-
-tui = CrosswordTui()
-tui.startWrapper()
+try:
+    tui = CrosswordTui()
+    tui.startWrapper()
+except Exception as e:
+    print (e)

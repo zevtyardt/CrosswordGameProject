@@ -11,7 +11,6 @@ import tabulate
 import itertools
 
 from pprint import pprint
-
 logging.basicConfig(format="• %(message)s", level=logging.WARN)
 
 
@@ -165,16 +164,12 @@ class GridMaker(object):
         self.update_position()
 
     def serialize(self, arrays: Optional[List[list]] = None) -> None:
-        from cmd2 import ansi
         arrays = arrays or self.board
-        print(ansi.style(
-            "\n".join("".join(['"', *i, '",']) for i in arrays),
-            bold=True
-        ))
+        return ["".join(i) for i in arrays]
 
 
-class CrosswordGenerator:
-    def __init__(self, words: List[str], *, maxloop: Optional[int] = 1, empty_cell: str = " "):
+class crosswordEngine:
+    def __init__(self, words: List[str], *, maxloop: Optional[int] = 1, empty_cell: str = " ", maxheight: Optional[int] = None, maxwidth: Optional[int] = None):
         assert len(words) > 0, "input 'kata' tidak boleh kosong"
 
         self.direct = Namespace(up="UP", down="DOWN",
@@ -194,8 +189,13 @@ class CrosswordGenerator:
         self.maxloop = maxloop
         self.registered = Namespace(horizontal=[], vertical=[])
         self.empty_cell = empty_cell
+
+        self.maxheight = maxheight or float("inf")
+        self.maxwidth = maxwidth or float("inf")
         self.nonetype = type(None)
         self.array = self.build_first_array()
+        logging.info(
+            f"generating crossword [{self.maxheight}, {self.maxwidth}]")
         self.logging_level = logging.getLogger().level
 
     def longest_word(self, *,  delitem: bool = False) -> str:
@@ -217,8 +217,8 @@ class CrosswordGenerator:
         return self.longest_word(**kwargs)
 
     def build_first_array(self) -> List:
-        """Fungsi untuk membuat pondasi array, bisa mendatar atau menurun"""
-        """
+        """Fungsi untuk membuat pondasi array, bisa mendatar atau menurun
+
         l = [
            ["L", "O", "R", "E", "M"],
            [" ", " ", "B", " ", " "],
@@ -295,7 +295,7 @@ class CrosswordGenerator:
                     col += newA
                 self.registered.horizontal[index] = [(row, col), word]
 
-    def add_word(self, data: Namespace) -> None:
+    def addWord(self, data: Namespace) -> None:
         """
            Menambahkan kata kedalam :self.array: sesuai dengan :data:
            yang diberikan
@@ -303,9 +303,17 @@ class CrosswordGenerator:
         row, col = data.location
         word = data.sideA + data.char + data.sideB
 
+        #  cek tinggi array + grid harus kurang dari :self.maxheight:
+        def calcHeight():
+            return (len(self.array) + data.newA + data.newB) * 2 + 1
+
+        #  dan lebar array + grid harus kurang dari :self.maxwidth:
+        def calcWidth():
+            return (len(self.array[0]) + data.newA + data.newB) * 4 + 1
+
         template = Namespace(word=data.sideA + data.char +
                              data.sideB, row=row, col=col, cross=False)
-        if data.direction == "vertical":
+        if calcHeight() < self.maxheight and data.direction == "vertical":
             self.registered.vertical.append(
                 [(row - len(data.sideA), col), word]
             )
@@ -323,7 +331,7 @@ class CrosswordGenerator:
                 for num, charA in enumerate(data.sideB, start=1):
                     self.array[row + num][col] = charA
 
-        elif data.direction == "horizontal":
+        elif calcWidth() < self.maxwidth and data.direction == "horizontal":
             self.registered.horizontal.append(
                 [(row, col - len(data.sideA)), word]
             )
@@ -340,16 +348,19 @@ class CrosswordGenerator:
             if data.sideB:
                 for num, charB in enumerate(data.sideB, start=1):
                     self.array[row][col + num] = charB
+        else:
+            return False
         self.update_registered_position(data.direction, data.newA)
+        return True
 
-    def check_lines(self, l: List[int], direction: str) -> Optional[bool]:
+    def checkLines(self, l: List[int], direction: str) -> Optional[bool]:
         maxcon = [(c, len(list(nl))) for c, nl in itertools.groupby(l)]
         for i, (x, y) in enumerate(maxcon):
             if (i == 0 and x == 0) or isinstance(x, self.nonetype) or (x == 0 and y > 1):
                 return False
         return True
 
-    def is_cell_crash(self, current_position: tuple, real_direction: str) -> Optional[bool]:
+    def isCellCrash(self, current_position: tuple, real_direction: str) -> Optional[bool]:
         def verify(row: int, col: int) -> Optional[bool]:
             cpositions = {
                 "cur": (row, col),
@@ -394,12 +405,12 @@ class CrosswordGenerator:
 
         return 0 if self.array[currow][curcol] != self.empty_cell else 1
 
-    def check_side(self, row: int, col: int, real_direction: str) -> Optional[int]:
+    def checkSide(self, row: int, col: int, real_direction: str) -> Optional[int]:
         if self.array[row][col] == self.empty_cell:
             return 1
-        return self.is_cell_crash((row, col), real_direction)
+        return self.isCellCrash((row, col), real_direction)
 
-    def possible_direction(self, word: str, char: str, location: tuple) -> Optional[str]:
+    def findPossibleDirection(self, word: str, char: str, location: tuple) -> Optional[str]:
         splited_text = self.split_text(word, char)
         row, col = location
 
@@ -443,14 +454,14 @@ class CrosswordGenerator:
                             local_direct.left = None
 
                 if row - num >= 0:
-                    lines.up.left.append(self.check_side(row - num, col - 1, "up.left")
+                    lines.up.left.append(self.checkSide(row - num, col - 1, "up.left")
                                          if col - 1 >= 0 else 1)
-                    lines.up.right.append(self.check_side(row - num, col + 1, "up.right")
+                    lines.up.right.append(self.checkSide(row - num, col + 1, "up.right")
                                           if col + 1 < len(self.array[row]) else 1)
                 if col - num >= 0:
-                    lines.left.up.append(self.check_side(row - 1, col - num, "left.up")
+                    lines.left.up.append(self.checkSide(row - 1, col - num, "left.up")
                                          if row - 1 >= 0 else 1)
-                    lines.left.down.append(self.check_side(row + 1, col - num, "left.down")
+                    lines.left.down.append(self.checkSide(row + 1, col - num, "left.down")
                                            if row + 1 < len(self.array) else 1)
 
             logging.debug(f"{location} = {char}")
@@ -478,14 +489,14 @@ class CrosswordGenerator:
                             local_direct.right = None
 
                 if row + num < len(self.array):
-                    lines.down.left.append(self.check_side(row + num, col - 1, "down.left")
+                    lines.down.left.append(self.checkSide(row + num, col - 1, "down.left")
                                            if col - 1 >= 0 else 1)
-                    lines.down.right.append(self.check_side(row + num, col + 1, "down.right")
+                    lines.down.right.append(self.checkSide(row + num, col + 1, "down.right")
                                             if col + 1 < len(self.array[row]) else 1)
                 if col + num < len(self.array[row]):
-                    lines.right.up.append(self.check_side(row - 1, col + num, "right.up")
+                    lines.right.up.append(self.checkSide(row - 1, col + num, "right.up")
                                           if row - 1 >= 0 else 1)
-                    lines.right.down.append(self.check_side(row + 1, col + num, "right.down")
+                    lines.right.down.append(self.checkSide(row + 1, col + num, "right.down")
                                             if row + 1 < len(self.array) else 1)
 
             logging.debug(f"{lines.up = }")
@@ -527,17 +538,17 @@ class CrosswordGenerator:
 
             # step 5: cek sekitar line
             in_lines = Namespace(
-                up=(self.check_lines(lines.up.left, "up.left") and
-                    self.check_lines(lines.up.right, "up.right")
+                up=(self.checkLines(lines.up.left, "up.left") and
+                    self.checkLines(lines.up.right, "up.right")
                     and bool(sideA)) or not bool(sideA),
-                down=(self.check_lines(lines.down.left, "down.left") and
-                      self.check_lines(lines.down.right, "down.right") and bool(
+                down=(self.checkLines(lines.down.left, "down.left") and
+                      self.checkLines(lines.down.right, "down.right") and bool(
                     sideB)) or not bool(sideB),
-                left=(self.check_lines(lines.left.up, "left.up") and
-                      self.check_lines(lines.left.down, "left.down") and bool(
+                left=(self.checkLines(lines.left.up, "left.up") and
+                      self.checkLines(lines.left.down, "left.down") and bool(
                     sideA)) or not bool(sideA),
-                right=(self.check_lines(lines.right.up, "right.up") and
-                       self.check_lines(lines.right.down, "right.down") and bool(
+                right=(self.checkLines(lines.right.up, "right.up") and
+                       self.checkLines(lines.right.down, "right.down") and bool(
                     sideB)) or not bool(sideB)
             )
 
@@ -565,12 +576,12 @@ class CrosswordGenerator:
             pprint(results)
         return results
 
-    def parse_pos(self, word: str, locations: List[tuple]) -> dict:
+    def parsePos(self, word: str, locations: List[tuple]) -> dict:
         logging.debug(f"parsing kata: {word}")
         results = []
         for char, pos in locations.items():
             for po in pos:
-                if (data_results := self.possible_direction(word, char, po)):
+                if (data_results := self.findPossibleDirection(word, char, po)):
                     results.extend(data_results)
                     logging.debug(
                         f"\nterdapat {len(data_results)} kemungkinan untuk lokasi {po}\ntotal kemungkinan untuk kata {word!r}: {len(results)}\n")
@@ -579,17 +590,15 @@ class CrosswordGenerator:
     def compute(self, loop=0, added=0) -> None:
         temp = []
         while self.words:
-
-            if logging.getLogger().level == logging.DEBUG:
-                self.print_array()
-
             next_word = self.next_word(delitem=True)
             pos = self.find_position(next_word)
-            if (data := self.parse_pos(next_word, pos)):
+            if (data := self.parsePos(next_word, pos)):
                 added += 1
                 logging.info(
-                    f"menambahkan kata: {next_word!r} {data.location} arah {data.direction!r} {len(self.words)} kata tersisa [{len(self.array)}, {len(self.array[0])}]")
-                self.add_word(data)
+                    f"menambahkan kata: {next_word!r} {data.location} arah {data.direction!r} {len(self.words)} kata tersisa [{len(self.array) * 2}, {len(self.array[0]) * 2}]")
+                if not self.addWord(data):
+                    temp = []
+                    break
             else:
                 logging.info(f"lewati kata: {next_word}")
                 temp.append(next_word)
@@ -603,13 +612,26 @@ class CrosswordGenerator:
         else:
             logging.info(f"\n{added} kata berhasil ditambahkan")
 
+    def generateBoard(self) -> tuple:
+        gridMaker = GridMaker(self.array, self.registered)
+        gridMaker.generate()
+        return gridMaker
+
+
 if __name__ == "__main__":
-    c = CrosswordGenerator(sys.argv[1:])
+    from cmd2 import ansi
+    import shutil
+    term = shutil.get_terminal_size()
+    c = crosswordEngine(
+        sys.argv[1:], maxheight=term.lines, maxwidth=term.columns)
     try:
         c.compute()
     except KeyboardInterrupt:
         pass
-    g = GridMaker(c.array, c.registered)
-    g.generate()
-    g.serialize()
+    g = c.generateBoard()
+    x = g.serialize()
+    print(ansi.style(
+        "\n".join(x),
+        bold=True
+    ))
     # pprint(g.new_position)
