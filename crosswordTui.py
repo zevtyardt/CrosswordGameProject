@@ -131,7 +131,7 @@ class CrosswordTui(_Utils):
     def generateCrosswordBoard(self, mh: int, mw: int):
         def targetFunc():
             engine = crosswordEngine("ab abc abcd abcde abcdef abcdefg abcdefgh abcdefghi abcdefghij abcdefghijk".split(),
-                maxheight=mh, maxwidth=mw)
+                maxheight=mh - 4, maxwidth=mw - 4)
             engine.compute()
             g = engine.generateBoard()
             self.dataCrossword = {"board": g.serialize(), "height": mh, "width": mw}
@@ -141,23 +141,19 @@ class CrosswordTui(_Utils):
         mh, mw = win.getmaxyx()
         if not self.dataCrossword and not self.activeThread.get("gcb"):
             self.generateCrosswordBoard(mh, mw)
+        if self.dataCrossword and (mh > self.dataCrossword["height"] or mw > self.dataCrossword["width"]):
+            self.dataCrossword = None
         if self.dataCrossword:
-            if mh > self.dataCrossword["height"] or mw > self.dataCrossword["width"]:
-                self.dataCrossword = None
-                return
             ch, cw, board = self.calc_center(self.dataCrossword["board"], win)
             for index, line in enumerate(board, start=ch):
                 win.addstr(index, cw, line, curses.A_BOLD)
 
     def displayHelpMenu(self, win: _curses.window):
-        win.timeout(500)
-        while 1:
-            win.erase()
-            win.border()
-            self.add_title("help menu", win)
-            self.drawCrossword(win)
-            if win.getch() == ord("g"):
-                break
+        win.erase()
+        win.border()
+        self.add_title("help menu", win)
+        self.drawCrossword(win)
+        win.getch()
 
     def app(self, scr):
         self.scr = scr
@@ -183,7 +179,8 @@ class CrosswordTui(_Utils):
 
             mainScreen = self.new_window(height - 5, width, 5, 0)
             self.add_title("teka teki silang v1", mainScreen)
-            mainScreen.addstr(*self.calc_center(time.strftime("%c"), mainScreen))
+            if self.dataCrossword:
+                mainScreen.addstr(*self.calc_center(f"{self.dataCrossword['height']}, {self.dataCrossword['width']} < {mainScreen.getmaxyx()}", mainScreen))
 
             #  additional
             scoreScreen = self.new_window(5, 15, 0, width - 15)
@@ -201,8 +198,5 @@ class CrosswordTui(_Utils):
             elif ch == curses.KEY_NPAGE:
                 wraptext.next
 
-try:
-    tui = CrosswordTui()
-    tui.startWrapper()
-except Exception as e:
-    print (e)
+tui = CrosswordTui()
+tui.startWrapper()
