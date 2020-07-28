@@ -18,19 +18,24 @@ class Wraptext:
         self.prevdirect = None
         self._result = []
 
-    def update(self, text: str, width: int = None, maxline: int = None):
+    def update(self, text: Union[str, list], width: int = None, maxline: int = None):
         if self.text != text:
             self.text = text
         if width != self.width:
             self.width = width
             self.maxindex = float("inf")
+            self.next
+            self.back
         if maxline:
             self.maxline = maxline
 
     def _calc(self, back=False):
         if back and self.index > 0:
             self.index -= 1
-        wrapped = textwrap.wrap(self.text, self.width)
+        if isinstance(self.text, str):
+            wrapped = textwrap.wrap(self.text, self.width)
+        else:
+            wrapped = self.text
         splited = [wrapped[i + self.index: i + self.index + self.maxline]
                    for i in range(0, len(wrapped), self.maxline)]
         result = splited[0]
@@ -130,35 +135,48 @@ class CrosswordTui(_Utils):
 
     def generateCrosswordBoard(self, mh: int, mw: int):
         def targetFunc():
-            engine = crosswordEngine("ab abc abcd abcde abcdef abcdefg abcdefgh abcdefghi abcdefghij abcdefghijk".split(),
+            import random
+            engine = crosswordEngine(
+                ["".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(random.randrange(2, 4))) for i in range(random.randrange(10, 50))],
                 maxheight=mh - 4, maxwidth=mw - 4)
             engine.compute()
             g = engine.generateBoard()
-            self.dataCrossword = {"board": g.serialize(), "height": mh, "width": mw}
+            self.dataCrossword = {"board": g.serialize(), "height": mh, "width": mw, "data": g.new_position}
+            self.activeThread.pop("gcb")
         self.startThread("gcb", targetFunc)
 
     def drawCrossword(self, win: _curses.window):
-        mh, mw = win.getmaxyx()
-        if not self.dataCrossword and not self.activeThread.get("gcb"):
+        mh, mw = map(lambda x: x - 4, win.getmaxyx())
+        if not self.dataCrossword:
             self.generateCrosswordBoard(mh, mw)
-        if self.dataCrossword and (mh > self.dataCrossword["height"] or mw > self.dataCrossword["width"]):
             self.dataCrossword = None
-        if self.dataCrossword:
+        if self.dataCrossword and (mh < self.dataCrossword["height"] or mw < self.dataCrossword["width"]):
+            self.dataCrossword = None
+
+        if self.activeThread.get("gcb"):
+            win.addstr(2, 2, f"generating Crossword {mh} x {mw}")
+        elif self.dataCrossword:
+            #win.addstr(2, 2, f"{win.getmaxyx()}, {len(self.dataCrossword['board'])}")
+            #return
             ch, cw, board = self.calc_center(self.dataCrossword["board"], win)
             for index, line in enumerate(board, start=ch):
                 win.addstr(index, cw, line, curses.A_BOLD)
 
     def displayHelpMenu(self, win: _curses.window):
-        win.erase()
-        win.border()
-        self.add_title("help menu", win)
-        self.drawCrossword(win)
-        win.getch()
+        helpScreen = self.new_window(*self.scr.getmaxyx(), 0, 0)
+        helpScreen.border()
+        self.add_title("help menu", helpScreen)
+
+        """
+        """
+
+        helpScreen.getch()
 
     def app(self, scr):
         self.scr = scr
+        self.scr.border()
 
-        self.scr.timeout(500)
+        #self.scr.timeout(500)
         curses.curs_set(0)
         self.define_colors()
 
@@ -167,6 +185,7 @@ class CrosswordTui(_Utils):
         wraptext.next
 
         ch = 0
+        cp = 0
         while ch != ord("q"):
             height, width = self.scr.getmaxyx()
 
@@ -179,20 +198,24 @@ class CrosswordTui(_Utils):
 
             mainScreen = self.new_window(height - 5, width, 5, 0)
             self.add_title("teka teki silang v1", mainScreen)
-            if self.dataCrossword:
-                mainScreen.addstr(*self.calc_center(f"{self.dataCrossword['height']}, {self.dataCrossword['width']} < {mainScreen.getmaxyx()}", mainScreen))
+            mainScreen.addstr(2, 2, f"key binding, {cp}", curses.color_pair(cp))
+            cp += 1
+
+            #self.drawCrossword(mainScreen)
 
             #  additional
             scoreScreen = self.new_window(5, 15, 0, width - 15)
             self.add_title("score", scoreScreen, "alignleft")
             scoreScreen.addstr(*self.calc_center(
-                f"{self.score}", scoreScreen), curses.color_pair(2))
+                f"{self.score}", scoreScreen), curses.color_pair(10))
 
             self.refresh(scoreScreen, questScreen, mainScreen)
 
             ch = self.scr.getch()
             if ch == ord("g"):
                 self.displayHelpMenu(mainScreen)
+            if ch == ord("r"):
+                self.dataCrossword = None
             elif ch == curses.KEY_PPAGE:
                 wraptext.back
             elif ch == curses.KEY_NPAGE:

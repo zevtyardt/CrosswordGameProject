@@ -182,6 +182,7 @@ class crosswordEngine:
         #    huruf kecil juga termasuk
         self.words = set(word.upper() for word in words if word and re.match(
             r"^[a-zA-Z]{2,}$", word))
+        self.word_used = set()
 
         # maksimal rekursif yang kita butuhkan, karena akan ada kondisi dimana
         # kata tidak bisa ditambahkan sebab belumb ada huruf dengan posisi yang
@@ -234,6 +235,7 @@ class crosswordEngine:
         """
 
         longest_word = self.longest_word(delitem=True)
+        self.word_used.add(longest_word)
         logging.info(f"kata dasar: {longest_word}")
         if random.choice([self.direct.down, self.direct.right]) == self.direct.down:
             self.registered.vertical.append([(0, 0), longest_word])
@@ -302,6 +304,7 @@ class crosswordEngine:
         """
         row, col = data.location
         word = data.sideA + data.char + data.sideB
+        self.word_used.add(word)
 
         #  cek tinggi array + grid harus kurang dari :self.maxheight:
         def calcHeight():
@@ -612,6 +615,19 @@ class crosswordEngine:
         else:
             logging.info(f"\n{added} kata berhasil ditambahkan")
 
+    def refresh(self):
+        wordUse = self.word_used
+        lwordUse = len(wordUse)
+        prevarray = [self.array]
+
+        loop = 1
+        while loop:
+            self.__init__(wordUse, maxloop=self.maxloop, empty_cell=self.empty_cell, maxheight=self.maxheight, maxwidth=self.maxwidth)
+            self.compute()
+            if (len(self.word_used) == lwordUse and self.array != prevarray) or loop >= self.maxloop:
+                break
+            loop += 1
+
     def generateBoard(self) -> tuple:
         gridMaker = GridMaker(self.array, self.registered)
         gridMaker.generate()
@@ -633,5 +649,15 @@ if __name__ == "__main__":
     print(ansi.style(
         "\n".join(x),
         bold=True
-    ))
+    ), "\n", "=" * 20)
+
+    for i in range(2):
+     c.refresh()
+     g = c.generateBoard()
+     x = g.serialize()
+     print(ansi.style(
+        "\n".join(x),
+        bold=True
+     ), "\n", "=" * 20)
+
     # pprint(g.new_position)
