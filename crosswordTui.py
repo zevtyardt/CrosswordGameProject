@@ -162,19 +162,17 @@ class CrosswordTui(_Utils):
             for index, line in enumerate(board, start=ch):
                 win.addstr(index, cw, line, curses.A_BOLD)
 
-    def displayHelpMenu(self, win: _curses.window):
-        helpScreen = self.new_window(*self.scr.getmaxyx(), 0, 0)
-        helpScreen.border()
-        self.add_title("help menu", helpScreen)
-
-        """
-        """
-
-        helpScreen.getch()
+    def displayHelpMenu(self):
+        while True:
+            self.scr.border()
+            self.add_title("help menu", self.scr)
+            self.refresh()
+            if self.scr.getch() == ord("q"):
+                break
 
     def app(self, scr):
         self.scr = scr
-        self.scr.border()
+        self.displayHelpMenu()
 
         #self.scr.timeout(500)
         curses.curs_set(0)
@@ -213,7 +211,7 @@ class CrosswordTui(_Utils):
 
             ch = self.scr.getch()
             if ch == ord("g"):
-                self.displayHelpMenu(mainScreen)
+                self.displayHelpMenu()
             if ch == ord("r"):
                 self.dataCrossword = None
             elif ch == curses.KEY_PPAGE:
