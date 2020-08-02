@@ -1,5 +1,5 @@
 from crosswordEngine import crosswordEngine, parseLoc
-from typing import List, Union
+from typing import List, Union, Optional
 import itertools
 import curses
 import _curses
@@ -165,6 +165,7 @@ class CrosswordTui(_Utils):
             g = engine.generateBoard()
             self.data = {
                 "board": g.serialize(),
+                "clueless": g.serialize(g.clueless),
                 "height": mh,
                 "width": mw,
             }
@@ -172,7 +173,7 @@ class CrosswordTui(_Utils):
             self.activeThread.pop("gcb")
         self.startThread("gcb", targetFunc)
 
-    def drawCrossword(self, win: _curses.window):
+    def drawCrossword(self, win: _curses.window, board: Optional[List] = None):
         mh, mw = map(lambda x: x - 4, win.getmaxyx())
         if not self.data:
             self.generateCrosswordBoard(mh, mw)
@@ -185,7 +186,7 @@ class CrosswordTui(_Utils):
             win.refresh()
         elif self.data:
             ch, cw, board = self.calculateCenter(
-                self.data["board"], win)
+                board or self.data["clueless"], win)
             for index, line in enumerate(board, start=ch):
                 win.addstr(index, cw, line)
 
@@ -203,7 +204,7 @@ class CrosswordTui(_Utils):
 
         ch = 0
         cp = 0
-        while ch != ord("q"):
+        while ch != 17: # ctrl + q
             self.checkSize()
             height, width = self.scr.getmaxyx()
             p15 = self.calcPercentage(15, height, minint=5, maxint=8)
@@ -225,13 +226,13 @@ class CrosswordTui(_Utils):
             scoreBox = self.new_window(p15, 15, 0, width - 15)
             self.add_title("score", scoreBox, "alignleft")
             scoreBox.addstr(*self.calculateCenter(
-                 f"{self.score}", scoreBox), curses.color_pair(
+                 f"{ch}", scoreBox), curses.color_pair(
                  random.randint(1, curses.COLORS)))
 
             self.refresh(scoreBox, questBox, mainBox)
 
             ch = self.scr.getch()
-            if ch == ord("r"):
+            if ch == 18: # ctrl + r
                 self.data = None
             elif ch == curses.KEY_PPAGE:
                 wraptext.back

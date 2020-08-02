@@ -257,11 +257,18 @@ class GridMaker(object):
                     "loc": [calc((pos[0], pos[1] + index)) for index in range(len(word))]
                 }
 
+    def genClueless(self):
+        board = []
+        for line in self.board:
+            board.append([re.sub(r"[A-Z]", " ", char) for char in line])
+        self.clueless = board
+
     def generate(self) -> None:
         for array in self.array:
             self.parseline(array)
         self.joinlines()
         self.update_position()
+        self.genClueless()
 
     def serialize(self, arrays: Optional[List[list]] = None) -> None:
         arrays = arrays or self.board
@@ -756,3 +763,4 @@ if __name__ == "__main__":
     p.moveRight()
     print (p.start)
     p.locaround
+    print (g.clueless)
