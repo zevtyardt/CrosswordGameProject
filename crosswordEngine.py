@@ -9,10 +9,110 @@ import logging
 from argparse import Namespace
 import tabulate
 import itertools
+import functools
 
 from pprint import pprint
 logging.basicConfig(format="• %(message)s", level=logging.WARN)
 
+# decorator
+def changeCurrentPos(func):
+    @functools.wraps(func)
+    def wrapper(self):
+        row, col = func(self)
+        char = self.board[row][col]
+        self.start = (row, col)
+    return wrapper
+
+class parseLoc:
+    def __init__(self, board: List[str], data: dict):
+        self.board = board
+        self.data = data
+        self.empty_char = " "
+        self.start = self._startPosition()
+
+    def is_empty_char(self, char: str) -> Union[bool]:
+        return char in (self.empty_char, self.empty_char * 3)
+
+    def _startPosition(self):
+        for row in range(1, len(self.board), 2):
+            for col in range(1, len(self.board[row]), 2):
+                char = self.board[row][col]
+                if not self.is_empty_char(char):
+                    return (row, col)
+
+    @property
+    def loc(self):
+        row, col = self.start
+        return (row, col * 2)
+
+    @property
+    def locaround(self):
+        row, col = self.start
+        for nrow, ncol in [
+            (row - 1, col - 1),
+            (row - 1, col),
+            (row - 1, col + 1),
+            (row, col - 1),
+            (row, col + 1),
+            (row + 1, col - 1),
+            (row + 1, col),
+            (row + 1, col + 1),
+        ]:
+            char = self.board[nrow][ncol]
+            if ncol == col:
+                ncol = ncol * 2
+                if (_re := re.search(r"(\d+)(.+)", char)):
+                    char = _re.group(2)
+                    ncol += len(_re.group(1)) - 1
+                else:
+                    ncol -= 1
+            else:
+                ncol = ncol * 2
+            yield (nrow, ncol, char)
+
+    @changeCurrentPos
+    def moveLeft(self):
+        row, col = self.start
+        while True:
+            if col == 1:
+                col = len(self.board[row]) - 2
+            else:
+                col -= 2
+            if not self.is_empty_char(char := self.board[row][col]):
+                return (row, col)
+
+    @changeCurrentPos
+    def moveRight(self):
+        row, col = self.start
+        while True:
+            if col == len(self.board[row]) - 2:
+                col = 1
+            else:
+                col += 2
+            if not self.is_empty_char(char := self.board[row][col]):
+                return (row, col)
+
+    @changeCurrentPos
+    def moveUp(self):
+        row, col = self.start
+        while True:
+            if row == 1:
+                row = len(self.board) - 2
+            else:
+                row -= 2
+            if not self.is_empty_char(self.board[row][col]):
+                return (row, col)
+
+    @changeCurrentPos
+    def moveDown(self):
+        row, col = self.start
+        while True:
+            if row == len(self.board) - 2:
+                row = 1
+            else:
+                row += 2
+            if not self.is_empty_char(self.board[row][col]):
+                return (row, col)
 
 class GridMaker(object):
     def __init__(self, array: List[list], current_position: dict):
@@ -166,7 +266,6 @@ class GridMaker(object):
     def serialize(self, arrays: Optional[List[list]] = None) -> None:
         arrays = arrays or self.board
         return ["".join(i) for i in arrays]
-
 
 class crosswordEngine:
     def __init__(self, words: List[str], *, maxloop: Optional[int] = 1, empty_cell: str = " ", maxheight: Optional[int] = None, maxwidth: Optional[int] = None):
@@ -633,7 +732,6 @@ class crosswordEngine:
         gridMaker.generate()
         return gridMaker
 
-
 if __name__ == "__main__":
     from cmd2 import ansi
     import shutil
@@ -651,13 +749,10 @@ if __name__ == "__main__":
         bold=True
     ), "\n", "=" * 20)
 
-    for i in range(2):
-     c.refresh()
-     g = c.generateBoard()
-     x = g.serialize()
-     print(ansi.style(
-        "\n".join(x),
-        bold=True
-     ), "\n", "=" * 20)
-
-    # pprint(g.new_position)
+    p = parseLoc(g.board, g.new_position)
+    print (p.start)
+    p.moveLeft()
+    print (p.start)
+    p.moveRight()
+    print (p.start)
+    p.locaround

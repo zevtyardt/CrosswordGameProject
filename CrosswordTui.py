@@ -1,4 +1,4 @@
-from crosswordEngine import crosswordEngine
+from crosswordEngine import crosswordEngine, parseLoc
 from typing import List, Union
 import itertools
 import curses
@@ -6,7 +6,9 @@ import _curses
 import threading
 import time
 import textwrap
+import sys
 
+import random
 
 class Wraptext:
     def __init__(self):
@@ -75,7 +77,7 @@ class _Utils:
             ch, cw, text = self.calculateCenter(text, win)
         elif align == "alignright":
             cw = win.getmaxyx()[1] - 2 - len(text)
-        win.addstr(0, cw, f" {text.upper()} ", curses.A_BOLD)
+        win.addstr(0, cw, f" {text.title()} ")
 
     def refresh(self, *windows) -> None:
         self.scr.refresh()
@@ -123,16 +125,24 @@ class _Utils:
         height, width = map(lambda x: (x // 2), win.getmaxyx())
         return height - (ltexts // 2), width - (ltxt // 2), longestText if ltexts == 1 else texts
 
-
 class CrosswordTui(_Utils):
     def __init__(self):
         self.question = "Lorem Ipsum adalah contoh teks atau dummy dalam industri percetakan dan penataan huruf atau typesetting. Lorem Ipsum telah menjadi standar contoh teks sejak tahun 1500an, saat seorang tukang cetak yang tidak dikenal mengambil sebuah kumpulan teks dan mengacaknya untuk menjadi sebuah buku contoh huruf. Ia tidak hanya bertahan selama 5 abad, tapi juga telah beralih ke penataan huruf elektronik, tanpa ada perubahan apapun. Ia mulai dipopulerkan pada tahun 1960 dengan diluncurkannya lembaran-lembaran Letraset yang menggunakan kalimat-kalimat dari Lorem Ipsum, dan seiring munculnya perangkat lunak Desktop Publishing seperti Aldus PageMaker juga memiliki versi Lorem Ipsum."
         self.score = float("inf")
-        self.dataCrossword = None
+        self.data = None
         self.activeThread = {}
 
     def startWrapper(self):
         curses.wrapper(self.app)
+
+    def endwin(self, msg: str):
+        curses.endwin()
+        sys.exit(msg)
+
+    def checkSize(self):
+        height, width = self.scr.getmaxyx()
+        if width < 60 or height < 25:
+            self.endwin("Please increase your terminal size to at least 25x60")
 
     def define_colors(self):
         for i in range(1, curses.COLORS):
@@ -140,113 +150,102 @@ class CrosswordTui(_Utils):
 
     def new_window(self, *args):
         _win = curses.newwin(*args)
-        _win.border(0)
+        _win.border()
+        _win.bkgd(" ", curses.color_pair(8))
+        _win.attron(curses.color_pair(7))
         return _win
 
     def generateCrosswordBoard(self, mh: int, mw: int):
         def targetFunc():
-            import random
             engine = crosswordEngine(
                 ["".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(
                     random.randrange(2, 4))) for i in range(random.randrange(10, 50))],
                 maxheight=mh - 4, maxwidth=mw - 4)
             engine.compute()
             g = engine.generateBoard()
-            self.dataCrossword = {"board": g.serialize(
-            ), "height": mh, "width": mw, "data": g.new_position}
+            self.data = {
+                "board": g.serialize(),
+                "height": mh,
+                "width": mw,
+            }
+            self.parseLoc = parseLoc(g.board, g.new_position)
             self.activeThread.pop("gcb")
         self.startThread("gcb", targetFunc)
 
     def drawCrossword(self, win: _curses.window):
         mh, mw = map(lambda x: x - 4, win.getmaxyx())
-        if not self.dataCrossword:
+        if not self.data:
             self.generateCrosswordBoard(mh, mw)
-            self.dataCrossword = None
-        if self.dataCrossword and (mh < self.dataCrossword["height"] or mw < self.dataCrossword["width"]):
-            self.dataCrossword = None
+            self.data = None
+        if self.data and (mh < self.data["height"] or mw < self.data["width"]):
+            self.data = None
 
         if self.activeThread.get("gcb"):
             win.addstr(2, 2, f"generating Crossword {mh} x {mw}")
             win.refresh()
-        elif self.dataCrossword:
-            # win.addstr(2, 2, f"{win.getmaxyx()}, {len(self.dataCrossword['board'])}")
-            # return
+        elif self.data:
             ch, cw, board = self.calculateCenter(
-                self.dataCrossword["board"], win)
+                self.data["board"], win)
             for index, line in enumerate(board, start=ch):
-                win.addstr(index, cw, line, curses.A_BOLD)
+                win.addstr(index, cw, line)
 
-    def displayHelpMenu(self):
-        banners = [
-            " _____ _____ _____    _____ _____ _____        ___   ",
-            "|_   _|_   _|   __|  |_   _|  |  |     |   _ _|_  |  ",
-            "  | |   | | |__   |    | | |  |  |-   -|  | | |_| |_ ",
-           r"  |_|   |_| |_____|    |_| |_____|_____|   \_/|_____|"
-        ]
-        while True:
-            self.scr.erase()
-            self.scr.border()
-            self.add_title("help menu", self.scr)
-            ch, cw, board = self.calculateCenter(
-                banners, self.scr)
-            for index, line in enumerate(board, start=2):
-                self.scr.addstr(index, cw, line, curses.A_BOLD)
-            self.refresh()
-            if self.scr.getch() == ord("q"):
-                break
+            for h, w, char in self.parseLoc.locaround:
+                win.addstr(ch + h, cw + w, char, curses.color_pair(2))
 
     def app(self, scr):
         self.scr = scr
-        self.displayHelpMenu()
-
-        self.scr.timeout(500)
-        curses.curs_set(0)
         self.define_colors()
+
+        self.scr.timeout(200)
+        curses.curs_set(0)
 
         wraptext = None
 
         ch = 0
         cp = 0
         while ch != ord("q"):
+            self.checkSize()
             height, width = self.scr.getmaxyx()
-            if width < 60:
-                break
-            p15 = self.calcPercentage(15, height, minint=5, maxint=10)
+            p15 = self.calcPercentage(15, height, minint=5, maxint=8)
 
             if not wraptext:
                 wraptext = Wraptext()
-            questScreen = self.new_window(p15, width - 15, 0, 0)
-            self.add_title("question", questScreen, "alignleft")
-            questWidth = questScreen.getmaxyx()[1] - 4
+            questBox = self.new_window(p15, width - 15, 0, 0)
+            self.add_title("question", questBox, "alignleft")
+            questWidth = questBox.getmaxyx()[1] - 4
             wraptext.update(self.question, width=questWidth, maxline=p15 - 2)
             for index, line in enumerate(wraptext, start=1):
-                questScreen.addstr(index, 2, line)
+                questBox.addstr(index, 2, line)
 
-            mainScreen = self.new_window(height - p15, width, p15, 0)
-            self.add_title("teka teki silang v1", mainScreen)
-            # mainScreen.addstr(2, 2, f"key binding, {p15}", curses.color_pair(cp))
-            # cp += 1
-
-            self.drawCrossword(mainScreen)
+            mainBox = self.new_window(height - p15, width, p15, 0)
+            self.add_title("teka teki silang v1", mainBox)
+            self.drawCrossword(mainBox)
 
             #  additional
-            scoreScreen = self.new_window(p15, 15, 0, width - 15)
-            self.add_title("score", scoreScreen, "alignleft")
-            scoreScreen.addstr(*self.calculateCenter(
-                 f"{self.score}", scoreScreen), curses.color_pair(10))
+            scoreBox = self.new_window(p15, 15, 0, width - 15)
+            self.add_title("score", scoreBox, "alignleft")
+            scoreBox.addstr(*self.calculateCenter(
+                 f"{self.score}", scoreBox), curses.color_pair(
+                 random.randint(1, curses.COLORS)))
 
-            self.refresh(scoreScreen, questScreen, mainScreen)
+            self.refresh(scoreBox, questBox, mainBox)
 
             ch = self.scr.getch()
-            if ch == ord("g"):
-                self.displayHelpMenu()
             if ch == ord("r"):
-                self.dataCrossword = None
+                self.data = None
             elif ch == curses.KEY_PPAGE:
                 wraptext.back
             elif ch == curses.KEY_NPAGE:
                 wraptext.next
 
+            elif ch == curses.KEY_UP:
+                self.parseLoc.moveUp()
+            elif ch == curses.KEY_DOWN:
+                self.parseLoc.moveDown()
+            elif ch == curses.KEY_LEFT:
+                self.parseLoc.moveLeft()
+            elif ch == curses.KEY_RIGHT:
+                self.parseLoc.moveRight()
 
 tui = CrosswordTui()
 tui.startWrapper()
